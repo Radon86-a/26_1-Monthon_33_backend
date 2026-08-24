@@ -1,0 +1,10 @@
+# ビルド成果物・バイナリ
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+card-game-server
+
+# 環境変数・機密情報
+.env
