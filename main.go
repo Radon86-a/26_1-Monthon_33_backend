@@ -146,12 +146,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		ID:   uuid.New().String()[:8], // 短いユニークID
+		ID:   uuid.New().String()[:8],
 		Conn: conn,
 	}
 
-	// キューに登録
-	hub.Register(client)
+	// 接続成功をクライアントへ通知
+	client.SendJSON(map[string]interface{}{
+		"type":      "connected",
+		"player_id": client.ID,
+		"message":   "Connected to server successfully.",
+	})
 
 	defer func() {
 		hub.Unregister(client)
@@ -159,12 +163,23 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for {
-		_, _, err := client.Conn.ReadMessage()
+		_, p, err := client.Conn.ReadMessage()
 		if err != nil {
 			log.Printf("[Client %s] Disconnected\n", client.ID)
 			break
 		}
-		// 今後のカードプレイやターン終了メッセージはここで受信・転送します
+
+		// 受信したJSONメッセージのタイプを判定
+		var msg Message
+		if err := json.Unmarshal(p, &msg); err != nil {
+			continue
+		}
+
+		switch msg.Type {
+		case "join_match":
+			// クライアントが「対戦を探す」を押したときにマッチングキューへ登録
+			hub.Register(client)
+		}
 	}
 }
 
