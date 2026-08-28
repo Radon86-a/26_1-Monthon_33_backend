@@ -179,8 +179,37 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "join_match":
 			// クライアントが「対戦を探す」を押したときにマッチングキューへ登録
 			hub.Register(client)
+
+		case "game_state":
+	var payload GamePayload
+	if err := json.Unmarshal(p, &payload); err != nil {
+		continue
+	}
+
+	// 自分が所属する部屋を取得
+	if client.Room != nil {
+		room := client.Room
+		var opponent *Client
+		if room.Player1 == client {
+			opponent = room.Player2
+		} else {
+			opponent = room.Player1
+		}
+
+		// ターン終了アクションの場合、次のターンプレイヤーを相手に切り替える
+		if payload.Action == "end_turn" && opponent != nil {
+			payload.CurrentTurnPlayerID = opponent.ID
+		}
+
+		// 部屋の2人（自分と相手）に最新ステータスをブロードキャスト
+		client.SendJSON(payload)
+		if opponent != nil {
+			opponent.SendJSON(payload)
 		}
 	}
+		}
+	}
+
 }
 
 func main() {
@@ -189,4 +218,17 @@ func main() {
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal(err)
 	}
+}
+
+	// 汎用送受信用の構造体
+type GamePayload struct {
+	Type                string `json:"type"`
+	RoomID              string `json:"room_id"`
+	PlayerID            string `json:"player_id"`
+	CurrentTurnPlayerID string `json:"current_turn_player_id"`
+	CurrentHP           int    `json:"current_hp"`
+	MaxHP               int    `json:"max_hp"`
+	ATK                 int    `json:"atk"`
+	HandCount           int    `json:"hand_count"`
+	Action              string `json:"action"`
 }
