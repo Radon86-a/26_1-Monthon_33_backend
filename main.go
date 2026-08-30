@@ -184,6 +184,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	var payload GamePayload
 	if err := json.Unmarshal(p, &payload); err != nil {
 		continue
+		
 	}
 
 	// 自分が所属する部屋を取得
@@ -207,6 +208,18 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			opponent.SendJSON(payload)
 		}
 	}
+		case "cancel_match":
+    hub.mu.Lock()
+    if hub.waitingClient == client {
+        hub.waitingClient = nil
+        fmt.Printf("[Hub] Player %s cancelled matchmaking.\n", client.ID)
+        // キャンセル完了を通知
+        client.SendJSON(map[string]string{
+            "type": "match_cancelled",
+            "message": "Matchmaking cancelled.",
+        })
+    }
+    hub.mu.Unlock()
 		}
 	}
 
