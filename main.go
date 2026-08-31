@@ -244,4 +244,6 @@ type GamePayload struct {
 	ATK                 int    `json:"atk"`
 	HandCount           int    `json:"hand_count"`
 	Action              string `json:"action"`
+	HandDes				int		`json:"des_num"`
+	HealAmount			int		`json:"heal_amount"`
 }
