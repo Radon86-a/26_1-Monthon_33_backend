@@ -183,11 +183,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "game_state":
 	var payload GamePayload
 	if err := json.Unmarshal(p, &payload); err != nil {
+		log.Println("[Server] JSON unmarshal error:", err)
 		continue
-		
 	}
 
-	// 自分が所属する部屋を取得
 	if client.Room != nil {
 		room := client.Room
 		var opponent *Client
@@ -202,10 +201,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			payload.CurrentTurnPlayerID = opponent.ID
 		}
 
-		// 部屋の2人（自分と相手）に最新ステータスをブロードキャスト
+		// 1. 送信者（自分）にはそのままのデータを送り返す
 		client.SendJSON(payload)
+
+		// 2. 対戦相手には my_data と opponent_data を反転させて送信する
 		if opponent != nil {
-			opponent.SendJSON(payload)
+			opponentPayload := payload
+			opponentPayload.MyData = payload.OpponentData
+			opponentPayload.OpponentData = payload.MyData
+
+			opponent.SendJSON(opponentPayload)
 		}
 	}
 		case "cancel_match":
@@ -233,17 +238,25 @@ func main() {
 	}
 }
 
-	// 汎用送受信用の構造体
+// プレイヤーのステータス情報
+type PlayerStatus struct {
+	PlayerID  string `json:"player_id"`
+	CurrentHP int    `json:"current_hp"`
+	MaxHP     int    `json:"max_hp"`
+	ATK       int    `json:"atk"`
+	HandCount int    `json:"hand_count"`
+}
+
+// クライアントとやり取りする戦闘データ全体
 type GamePayload struct {
-	Type                string `json:"type"`
-	RoomID              string `json:"room_id"`
-	PlayerID            string `json:"player_id"`
-	CurrentTurnPlayerID string `json:"current_turn_player_id"`
-	CurrentHP           int    `json:"current_hp"`
-	MaxHP               int    `json:"max_hp"`
-	ATK                 int    `json:"atk"`
-	HandCount           int    `json:"hand_count"`
-	Action              string `json:"action"`
-	HandDes				int		`json:"des_num"`
-	HealAmount			int		`json:"heal_amount"`
+	Type                string       `json:"type"`
+	RoomID              string       `json:"room_id"`
+	CurrentTurnPlayerID string       `json:"current_turn_player_id"`
+	Action              string       `json:"action"`
+	IsFirst             bool         `json:"is_first"`
+	Message             string       `json:"message"`
+	DesNum              int          `json:"des_num"`
+	HealAmount          int          `json:"heal_amount"`
+	MyData              PlayerStatus `json:"my_data"`
+	OpponentData        PlayerStatus `json:"opponent_data"`
 }
