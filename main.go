@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"os"
 )
 
 var upgrader = websocket.Upgrader{
@@ -37,9 +38,14 @@ func (c *Client) SendJSON(v interface{}) error {
 
 // 対戦部屋を表す構造体
 type Room struct {
-	ID      string
-	Player1 *Client
-	Player2 *Client
+	ID           string
+	Player1      *Client
+	Player2      *Client
+	P1Ready      bool
+	P2Ready      bool
+	P1Status     PlayerStatus
+	P2Status     PlayerStatus
+	FirstTurnID  string
 }
 
 // マネージャー（待機キューとアクティブルームを管理）
@@ -190,27 +196,63 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if client.Room != nil {
 		room := client.Room
 		var opponent *Client
-		if room.Player1 == client {
+		isP1 := (room.Player1 == client)
+
+		if isP1 {
 			opponent = room.Player2
 		} else {
 			opponent = room.Player1
 		}
 
-		// ターン終了アクションの場合、次のターンプレイヤーを相手に切り替える
+		// ★クライアントが戦闘画面の準備完了を通知してきた場合
+		if payload.Action == "ready" {
+			if isP1 {
+				room.P1Ready = true
+				room.P1Status = payload.MyData
+				room.FirstTurnID = client.ID // P1を先行とする
+			} else {
+				room.P2Ready = true
+				room.P2Status = payload.MyData
+			}
+
+			fmt.Printf("[Room %s] Player %s is ready.\n", room.ID, client.ID)
+
+			// 2人ともロードが完了して ready になったら初期データを双方に送信
+			if room.P1Ready && room.P2Ready {
+				fmt.Printf("[Room %s] Both ready! Starting battle synchronization.\n", room.ID)
+
+				// Player 1 への初期化パケット（自分のデータと相手のデータが確定）
+				room.Player1.SendJSON(GamePayload{
+					Type:                "game_state",
+					Action:              "battle_start",
+					CurrentTurnPlayerID: room.FirstTurnID,
+					MyData:              room.P1Status,
+					OpponentData:        room.P2Status,
+				})
+
+				// Player 2 への初期化パケット
+				room.Player2.SendJSON(GamePayload{
+					Type:                "game_state",
+					Action:              "battle_start",
+					CurrentTurnPlayerID: room.FirstTurnID,
+					MyData:              room.P2Status,
+					OpponentData:        room.P1Status,
+				})
+			}
+			continue
+		}
+
+		// ターン終了処理
 		if payload.Action == "end_turn" && opponent != nil {
 			payload.CurrentTurnPlayerID = opponent.ID
 		}
 
-		// 1. 送信者（自分）にはそのままのデータを送り返す
+		payload.PlayerID = client.ID
+
+		// 通常のアクション中継
 		client.SendJSON(payload)
-
-		// 2. 対戦相手には my_data と opponent_data を反転させて送信する
 		if opponent != nil {
-			opponentPayload := payload
-			opponentPayload.MyData = payload.OpponentData
-			opponentPayload.OpponentData = payload.MyData
-
-			opponent.SendJSON(opponentPayload)
+			opponent.SendJSON(payload)
 		}
 	}
 		case "cancel_match":
@@ -232,8 +274,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("/ws", handleWebSocket)
-	fmt.Println("Card Game Server running on ws://localhost:8080/ws")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+
+	// 環境変数 PORT を取得。未設定の場合はデフォルトで 8080 を使用
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	addr := ":" + port
+	fmt.Printf("Card Game Server running on ws://0.0.0.0%s/ws\n", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -251,6 +301,7 @@ type PlayerStatus struct {
 type GamePayload struct {
 	Type                string       `json:"type"`
 	RoomID              string       `json:"room_id"`
+	PlayerID            string       `json:"player_id"` // ★これを追加
 	CurrentTurnPlayerID string       `json:"current_turn_player_id"`
 	Action              string       `json:"action"`
 	IsFirst             bool         `json:"is_first"`
