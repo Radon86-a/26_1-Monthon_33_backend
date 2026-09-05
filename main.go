@@ -275,14 +275,14 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func main() {
 	http.HandleFunc("/ws", handleWebSocket)
 
-	// 環境変数 PORT を取得。未設定の場合はデフォルトで 8080 を使用
+	// PaaS環境から渡されるポート番号を取得（デフォルト: 8080）
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
 	addr := ":" + port
-	fmt.Printf("Card Game Server running on ws://0.0.0.0%s/ws\n", addr)
+	fmt.Printf("Card Game Server running on port %s (endpoint: /ws)\n", port)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal(err)
 	}
